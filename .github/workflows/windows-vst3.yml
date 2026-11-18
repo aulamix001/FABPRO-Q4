@@ -44,36 +44,21 @@ jobs:
           $hash = (Get-FileHash FABPRO-Q4-Windows-x64-VST3.zip).Hash.ToLowerInvariant()
           Set-Content -Encoding ascii FABPRO-Q4-Windows-x64-VST3.zip.sha256 "$hash  FABPRO-Q4-Windows-x64-VST3.zip"
 
-      - name: Upload validated ZIP to the workflow run
-        id: artifact
-        uses: actions/upload-artifact@v6
-        continue-on-error: true
-        with:
-          name: FABPRO-Q4-Windows-x64-VST3
-          path: FABPRO-Q4-Windows-x64-VST3.zip
-          compression-level: 0
-          if-no-files-found: error
-
-      - name: Publish Windows release assets
-        id: release
-        uses: softprops/action-gh-release@v2
-        continue-on-error: true
-        with:
-          tag_name: windows-x64-v1.0.0
-          target_commitish: ${{ github.sha }}
-          name: FABPRO-Q4 VST3 Windows x64
-          body: Release x64 compiled with Visual Studio 2022 and validated with pluginval level 5.
-          files: |
-            FABPRO-Q4-Windows-x64-VST3.zip
-            FABPRO-Q4-Windows-x64-VST3.zip.sha256
-          fail_on_unmatched_files: true
-
-      - name: Verify that GitHub returned a download link
+      - name: Push ZIP and verify published Windows download
         shell: pwsh
-        env:
-          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
-          RELEASE_URL: ${{ steps.release.outputs.url }}
         run: |
-          if ($env:ARTIFACT_URL) { Add-Content $env:GITHUB_STEP_SUMMARY "Windows ZIP artifact: $env:ARTIFACT_URL" }
-          if ($env:RELEASE_URL) { Add-Content $env:GITHUB_STEP_SUMMARY "Windows release: $env:RELEASE_URL" }
-          if (!$env:ARTIFACT_URL -and !$env:RELEASE_URL) { throw 'GitHub returned no Windows download link. Check both publication steps.' }
+          $PSNativeCommandUseErrorActionPreference = $true
+          $zip = 'FABPRO-Q4-Windows-x64-VST3.zip'
+          $ref = 'refs/heads/windows-download'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f -- $zip "$zip.sha256"
+          git commit -m 'Add validated FABPRO-Q4 Windows x64 VST3 bundle'
+          $local = (git rev-parse HEAD).Trim()
+          git push origin "HEAD:$ref"
+          $remote = ((git ls-remote --exit-code origin $ref) -split '\s+')[0]
+          if ($remote -ne $local) { throw "Published ref mismatch: expected $local, received $remote" }
+          $url = "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/$local/$zip"
+          Invoke-WebRequest $url -OutFile verified-download.zip
+          if ((Get-FileHash verified-download.zip).Hash -ne (Get-FileHash $zip).Hash) { throw 'Published Windows ZIP checksum mismatch' }
+          Add-Content $env:GITHUB_STEP_SUMMARY "Verified Windows x64 download: $url"
