@@ -44,14 +44,12 @@ jobs:
           $hash = (Get-FileHash FABPRO-Q4-Windows-x64-VST3.zip).Hash.ToLowerInvariant()
           Set-Content -Encoding ascii FABPRO-Q4-Windows-x64-VST3.zip.sha256 "$hash  FABPRO-Q4-Windows-x64-VST3.zip"
 
-      - name: Publish the validated ZIP on the build branch
+      - name: Publish verified Windows release
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- FABPRO-Q4-Windows-x64-VST3.zip FABPRO-Q4-Windows-x64-VST3.zip.sha256
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) { exit 0 }
-          git commit -m 'Publish validated FABPRO-Q4 Windows x64 VST3'
+          $tag = 'windows-x64-v1.0.0'
+          gh release create $tag FABPRO-Q4-Windows-x64-VST3.zip FABPRO-Q4-Windows-x64-VST3.zip.sha256 --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'FABPRO-Q4 VST3 Windows x64' --notes 'Release x64 compiled with Visual Studio 2022 and validated with pluginval level 5.'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git push origin HEAD:refs/heads/windows-build
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets,url
