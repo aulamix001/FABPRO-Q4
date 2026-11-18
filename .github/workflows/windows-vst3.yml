@@ -1,0 +1,65 @@
+name: FABPRO-Q4 Windows x64 VST3
+
+on:
+  push:
+    branches: [windows-build]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch JUCE 8.0.4
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch 8.0.4 https://github.com/juce-framework/JUCE.git JUCE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((git -C JUCE rev-parse HEAD) -ne '51d11a2be6d5c97ccf12b4e5e827006e19f0555a') { throw 'Unexpected JUCE commit' }
+
+      - name: Build release for Windows x64
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 "-DJUCE_DIR=$pwd/JUCE"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build --config Release --target ProQ3Clone_VST3 --parallel 4
+
+      - name: Validate and package VST3
+        shell: pwsh
+        run: |
+          $plugin = 'build/ProQ3Clone_artefacts/Release/VST3/FABPRO-Q4.vst3'
+          if (!(Test-Path "$plugin/Contents/x86_64-win/FABPRO-Q4.vst3" -PathType Leaf)) { throw 'Missing Windows x64 VST3 binary' }
+          Invoke-WebRequest 'https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip' -OutFile pluginval.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+          $validator = Get-ChildItem pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1
+          if (!$validator) { throw 'Missing pluginval.exe' }
+          & $validator.FullName --strictness-level 5 --validate-in-process --skip-gui-tests --validate (Resolve-Path $plugin).Path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -LiteralPath $plugin -DestinationPath FABPRO-Q4-Windows-x64-VST3.zip -Force
+          $hash = (Get-FileHash FABPRO-Q4-Windows-x64-VST3.zip).Hash.ToLowerInvariant()
+          Set-Content -Encoding ascii FABPRO-Q4-Windows-x64-VST3.zip.sha256 "$hash  FABPRO-Q4-Windows-x64-VST3.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FABPRO-Q4-Windows-x64-VST3
+          path: |
+            FABPRO-Q4-Windows-x64-VST3.zip
+            FABPRO-Q4-Windows-x64-VST3.zip.sha256
+          if-no-files-found: error
+
+      - name: Publish the validated ZIP on the build branch
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- FABPRO-Q4-Windows-x64-VST3.zip FABPRO-Q4-Windows-x64-VST3.zip.sha256
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          git commit -m 'Publish validated FABPRO-Q4 Windows x64 VST3'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git push origin HEAD:refs/heads/windows-build
