@@ -44,14 +44,6 @@ jobs:
           $hash = (Get-FileHash FABPRO-Q4-Windows-x64-VST3.zip).Hash.ToLowerInvariant()
           Set-Content -Encoding ascii FABPRO-Q4-Windows-x64-VST3.zip.sha256 "$hash  FABPRO-Q4-Windows-x64-VST3.zip"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: FABPRO-Q4-Windows-x64-VST3
-          path: |
-            FABPRO-Q4-Windows-x64-VST3.zip
-            FABPRO-Q4-Windows-x64-VST3.zip.sha256
-          if-no-files-found: error
-
       - name: Publish the validated ZIP on the build branch
         shell: pwsh
         run: |
